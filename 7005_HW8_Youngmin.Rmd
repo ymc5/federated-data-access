@@ -1,0 +1,413 @@
+---
+title: "7005_HW8"
+author: "Youngmin Choi"
+date: "2024-03-14"
+output: html_document
+---
+```{r setup}
+echo=TRUE
+message=FALSE
+warning= FALSE
+library(tidyverse)     
+library(RPostgres)     
+library(connections)   
+library(DBI)
+library(yaml)
+library(dplyr)
+library(ggplot2)
+```
+
+## Objective
+In this task, multiple connections were generated to access databases from different sources in order to analyze the data of patients with different conditions. 
+
+
+## Step 1: Connect to databases.
+
+
+### 1) Define function to connect to multiple databases. 
+
+A function was created to connect to multiple databases based on the connection information contained in the config_file yaml file. This was done to remove any personal secure information from the code and to connect to multiple connections without having to include more codes into the notebook. 
+```{r}
+establish_connections <- function(config_file) {
+  config <- yaml::read_yaml(config_file)
+  connections <- list()
+  
+  for (db_name in names(config$databases)) {
+    db_config <- config$databases[[db_name]]
+    print(paste("Connecting to", db_name))
+    con <- connection_open(RPostgres::Postgres(),
+                           host = db_config$host,
+                           dbname = db_config$dbname,
+                           user = db_config$user,
+                           password = db_config$password)
+    print(paste("Connection to", db_name, "established"))
+    connections[[db_name]] <- con
+  }
+  
+  return(connections)
+}
+
+```
+
+
+
+### 2) Connect to databases & Load tables. 
+
+Multiple connections made simultaneously while iterating the function defined above. 
+```{r}
+connections <- establish_connections("config.yaml")
+connections
+```
+
+Each individual connections assigned to each variable to extract information individually. 
+```{r}
+db1_con<-connections$db1
+db2_con<-connections$db2
+db3_con<-connections$db3
+db4_con<-connections$db4
+db5_con<-connections$db5
+db6_con<-connections$db6
+db7_con<-connections$db7
+db8_con<-connections$db8
+db9_con<-connections$db9
+```
+
+Each tables were loaded separately in order to assess the table structure since each table may have different features. 
+
+```{r}
+pneumonia<-dbGetQuery(db1_con, "SELECT * FROM pneumonia")
+pneumonia <- pneumonia %>% filter (is.na(deathdate))
+head(pneumonia)
+```
+
+```{r}
+viral_sinusitis<-dbGetQuery(db2_con, "SELECT * FROM viral_sinusitis")
+viral_sinusitis <- viral_sinusitis %>% filter (is.na(deathdate))
+head(viral_sinusitis)
+```
+
+```{r}
+chronic_sinusitis<-dbGetQuery(db3_con, "SELECT * FROM Chronic_sinusitis")
+chronic_sinusitis <- chronic_sinusitis %>% filter (is.na(deathdate)) %>% filter (birthdate <=Sys.Date())
+head(chronic_sinusitis)
+```
+
+
+```{r}
+osteoporosis<-dbGetQuery(db4_con, "SELECT * FROM osteoporosis")
+osteoporosis <- osteoporosis %>% filter (is.na(deathdate))
+head(osteoporosis)
+```
+
+```{r}
+hypoxemia<-dbGetQuery(db5_con, "SELECT * FROM hypo")
+#hypoxemia <- hypoxemia %>% filter (is.na(deathdate))
+head(hypoxemia)
+
+```
+
+```{r}
+hypertension<-dbGetQuery(db6_con, "SELECT * FROM hypertension")
+hypertension <- hypertension %>% filter (is.na(deathdate))
+head(hypertension)
+```
+
+```{r}
+acute_bronchitis<-dbGetQuery(db7_con, "SELECT * FROM acute_bronchitis")
+# acute_bronchitis <- acute_bronchitis %>% filter (is.na(deathdate))
+head(acute_bronchitis)
+```
+
+```{r}
+anemia<-dbGetQuery(db8_con, "SELECT * FROM anemia")
+# acute_bronchitis <- acute_bronchitis %>% filter (is.na(deathdate))
+head(anemia)
+```
+
+```{r}
+heart_failure<-dbGetQuery(db9_con, "SELECT * FROM heart_failure")
+heart_failure <- heart_failure %>% filter (is.na(deathdate))
+head(heart_failure)
+```
+
+### 3) Data Analysis
+
+
+#### i) Number of Patients 
+
+```{r}
+# Count of distinct IDs from each databases. 
+
+pneumonia_count <- pneumonia %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+pneumonia_count$condition <- 'pneumonia'
+viral_sinusitis_count <- viral_sinusitis %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+viral_sinusitis_count$condition <- 'viral sinusitis'
+chronic_sinusitis_count <- chronic_sinusitis %>% dplyr::distinct(patient) %>% summarise(number_of_patients=n())
+chronic_sinusitis_count$condition <- 'chronic sinusitis'
+osteoporosis_count <- osteoporosis %>% dplyr::distinct(patient) %>% summarise(number_of_patients=n())
+osteoporosis_count$condition <- 'osteoporosis'
+hypoxemia_count <- hypoxemia %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+hypoxemia_count$condition <- 'hypoxemia'
+hypertension_count <- hypertension %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+hypertension_count$condition <- 'hypertension'
+acute_bronchitis_count <- acute_bronchitis %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+acute_bronchitis_count$condition <- 'acute_bronchitis'
+anemia_count <- anemia %>% dplyr::distinct(patient) %>% summarise(number_of_patients=n())
+anemia_count$condition <- 'anemia'
+heart_failure_count <- heart_failure %>% dplyr::distinct(id) %>% summarise(number_of_patients=n())
+heart_failure_count$condition <- 'heart_failure'
+
+combined_count <- rbind(pneumonia_count,viral_sinusitis_count,chronic_sinusitis_count, osteoporosis_count,hypoxemia_count,hypertension_count,acute_bronchitis_count,anemia_count, heart_failure_count)
+
+# Ordered from high to low. 
+combined_count <- combined_count %>% arrange (desc(number_of_patients))
+print(combined_count)
+```
+
+Visualization of patient count. 
+
+```{r}
+ggplot(combined_count, aes(x = condition, y = number_of_patients, fill = condition)) +
+  geom_bar(stat = "identity") +
+  labs(x=NULL, y = "Number of Patients", title = "Bar Graph of Number of Patients by Condition") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+#### ii) Age of Patients
+
+```{r}
+# Age in pneumonia data
+pneumonia <- pneumonia %>%
+  mutate(age=ceiling(as.numeric(difftime(Sys.Date(), birthdate))/365))
+
+#print(head(pneumonia))
+pneumonia_age <- pneumonia$age
+print(head(pneumonia_age))
+```
+
+```{r}
+# Age in viral sinusitis
+viral_sinusitis_age <- viral_sinusitis$age
+print(head(viral_sinusitis_age))
+```
+
+```{r}
+# Age in chronic sinusitis data
+chronic_sinusitis <- chronic_sinusitis %>%
+  mutate(age=ceiling(as.numeric(difftime(Sys.Date(), birthdate))/365))
+
+#print(head(chronic_sinusitis))
+chronic_sinusitis_age <- chronic_sinusitis$age
+print(head(chronic_sinusitis_age))
+```
+
+```{r}
+# Age in osteoporosis data
+osteoporosis <- osteoporosis %>%
+  mutate(age=ceiling(as.numeric(difftime(Sys.Date(), birthdate))/365))
+
+#print(head(osteoporosis))
+osteoporosis_age <- osteoporosis$age
+#print(head(osteoporosis_age)
+print(range(osteoporosis_age))
+```
+
+```{r}
+# Age in hypertension data
+hypertension <- hypertension %>%
+  mutate(age=ceiling(as.numeric(difftime(Sys.Date(), birthdate))/365))
+
+#print(head(hypertension))
+hypertension_age <- hypertension$age
+print(head(hypertension_age))
+```
+
+```{r}
+# Age in heart failure
+heart_failure <- heart_failure %>%
+  mutate(age=ceiling(as.numeric(difftime(Sys.Date(), birthdate))/365))
+
+#print(head(heart_failure))
+heart_failure_age <- heart_failure$age
+print(head(heart_failure_age))
+```
+
+Visualization of patient age distribution for each condition
+
+```{r}
+# Calculate histograms for each dataset
+hist1 <- hist(pneumonia_age, plot = FALSE)
+hist2 <- hist(viral_sinusitis_age, plot = FALSE)
+hist3 <- hist(chronic_sinusitis_age, plot = FALSE)
+hist4 <- hist(osteoporosis_age, plot = FALSE)
+hist5 <- hist(hypertension_age, plot = FALSE)
+hist6 <- hist(heart_failure_age, plot = FALSE)
+
+# Get the maximum count across all datasets
+max_count <- max(c(hist1$counts, hist2$counts, hist3$counts,hist4$counts,hist5$counts))
+
+# Create plot with adjusted margins
+par(mar = c(3, 3, 2, 1))
+
+# Plot counts as lines
+plot(hist1$breaks[-1], hist1$counts, type = "l", col = "blue", main = "Combined Line Plot of Counts", xlab = "Value", ylab = "Count", xlim = range(c(hist1$breaks, hist2$breaks, hist3$breaks,hist4$breaks,hist5$breaks)), ylim = c(0, max_count))
+lines(hist2$breaks[-1], hist2$counts, col = "red")
+lines(hist3$breaks[-1], hist3$counts, col = "green")
+lines(hist4$breaks[-1], hist4$counts, col = "orange")
+lines(hist5$breaks[-1], hist5$counts, col = "purple")
+lines(hist6$breaks[-1], hist6$counts, col = "skyblue")
+
+# Add legend
+legend("topright", legend = c("penumonia", "viral sinusitis","chronic sinusitis", "osteoporosis","hypertension","heart failure"), col = c("blue", "red", "green","orange","purple","skyblue"), lty = 1)
+
+
+```
+
+
+Average, Minimum and Maximum Age in Patient Groups
+
+```{r}
+pneumonia_avgage <- pneumonia %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+pneumonia_avgage$name <- 'pneumonia'
+viral_sinusitis_avgage <- viral_sinusitis %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+viral_sinusitis_avgage$name <- 'viral sinusitis'
+chronic_sinusitis_avgage <- chronic_sinusitis %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+chronic_sinusitis_avgage$name <- 'chronic sinusitis'
+osteoporosis_avgage <- osteoporosis %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+osteoporosis_avgage$name <- 'osteoporosis'
+hypertension_avgage <- hypertension %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+hypertension_avgage$name <- 'hypertension'
+heart_failure_avgage <- heart_failure %>% summarise(
+    avg_age = mean(age, na.rm = TRUE),
+    min_age = min(age, na.rm = TRUE),
+    max_age = max(age, na.rm = TRUE)
+  )
+heart_failure_avgage$name <- 'heart_failure'
+
+
+combined_age <- rbind(pneumonia_avgage,viral_sinusitis_avgage,chronic_sinusitis_avgage,osteoporosis_avgage,hypertension_avgage,heart_failure_avgage)
+
+
+
+print(combined_age)
+
+
+```
+
+
+#### iii) Gender of Patients
+
+```{r}
+
+# Function to calculate male and female percentages
+calculate_percentages <- function(df) {
+  # Count occurrences of male and female
+  n_male <- sum(df$gender == "M")
+  n_female <- sum(df$gender == "F")
+  
+  # Calculate total count
+  total <- n_male + n_female
+  
+  # Check for division by zero (no data)
+  if (total == 0) {
+    return(data.frame(male = NA, female = NA))
+  } else {
+    # Calculate percentages
+    male_pct <- round(n_male / total * 100, 2)
+    female_pct <- round(n_female / total * 100, 2)
+    
+    # Return data frame with percentages
+    return(data.frame(male = male_pct, female = female_pct))
+  }
+}
+
+# Calculate percentages for each dataframe
+pneumonia_gender <- calculate_percentages(pneumonia)
+viral_sinusitis_gender <- calculate_percentages(viral_sinusitis)
+chronic_sinusitis_gender <- calculate_percentages(chronic_sinusitis)
+hypoxemia_gender <- calculate_percentages(hypoxemia)
+osteoporosis_gender <- calculate_percentages(osteoporosis)
+hypertension_gender <- calculate_percentages(hypertension)
+heart_failure_gender <- calculate_percentages(heart_failure)
+
+# Combine percentages into a new dataframe
+combined_percentages <- rbind(pneumonia_gender, viral_sinusitis_gender,chronic_sinusitis_gender,hypoxemia_gender, osteoporosis_gender,hypertension_gender,heart_failure_gender)
+
+combined_percentages$condition <- c("Pneumonia", "Viral Sinusitis", "Chronic Sinusitis","Hypoxemia", "Osteoporosis","Hypertension","Heart Failure")
+
+print(combined_percentages)
+
+```
+
+
+#### iv) Race of Patients
+
+```{r}
+#First check unique values
+unique_values <- unique (pneumonia$race)
+unique_values
+
+```
+
+```{r}
+
+# Function to calculate race percentages
+calculate_racepercentages <- function(df) {
+  # Count occurrences of races
+  n_white <- sum(df$race == "white")
+  n_asian <- sum(df$race == "asian")
+  n_black <- sum(df$race == "black")
+  n_native <- sum(df$race == 'native')
+  n_other <- sum(df$race == 'other')
+  
+  # Calculate total count
+  total <- n_white + n_asian + n_black + + n_native + n_other
+  white_pct <- round(n_white / total * 100, 2)
+  asian_pct <- round(n_asian / total * 100, 2)
+  black_pct <- round(n_black / total * 100, 2)
+  native_pct <- round(n_native / total * 100, 2)
+  other_pct <- round(n_other / total * 100, 2)
+    
+    # Return data frame with percentages
+    return(data.frame(white = white_pct, black = black_pct, asian=asian_pct, native=native_pct, other=other_pct))
+  }
+
+# Calculate percentages for each dataframe
+pneumonia_race <- calculate_racepercentages(pneumonia)
+viral_sinusitis_race <- calculate_racepercentages(viral_sinusitis)
+chronic_sinusitis_race <- calculate_racepercentages(chronic_sinusitis)
+hypoxemia_race <- calculate_racepercentages(hypoxemia)
+osteoporosis_race <- calculate_racepercentages(osteoporosis)
+hypertension_race <- calculate_racepercentages(hypertension)
+heart_failure_race <- calculate_racepercentages(heart_failure)
+
+# Combine percentages into a new dataframe
+combined_racepercentages <- rbind(pneumonia_race, viral_sinusitis_race,chronic_sinusitis_race, hypoxemia_race, osteoporosis_race,hypertension_race)
+combined_racepercentages$condition <- c("Pneumonia", "Viral Sinusitis","Chronic Sinusitis","Hypoxemia", "Osteoporosis","Hypertension")
+
+
+print(combined_racepercentages)
+
+```
